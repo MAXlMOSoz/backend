@@ -1,102 +1,111 @@
 import { NextResponse } from "next/server";
-import { usersList } from "./data";
+import { getStudents, saveStudents } from "./data";
+
+const STARTING_STUDENT_ID = "69319010024";
 
 //================================================================================
-// GET Function: ดึงรายการผู้ใช้ทั้งหมด (/api/users)
+// 1. GET: ดึงข้อมูลนักศึกษาทั้งหมด
+// Endpoint: GET /api/users
 //================================================================================
 export async function GET() {
   try {
+    const students = getStudents();
+
     return NextResponse.json(
       {
         success: true,
-        message: "ดึงข้อมูลผู้ใช้ทั้งหมดสำเร็จ",
-        total: usersList.length,
-        data: usersList,
+        message: "ดึงข้อมูลนักศึกษาทั้งหมดสำเร็จ",
+        total: students.length,
+        data: students,
       },
       { status: 200 }
     );
   } catch (error) {
     return NextResponse.json(
-      {
-        success: false,
-        message: "เกิดข้อผิดพลาดภายในเซิร์ฟเวอร์",
-        error: error instanceof Error ? error.message : "Internal Server Error",
-      },
+      { success: false, message: "เกิดข้อผิดพลาดภายในเซิร์ฟเวอร์", error: error.message },
       { status: 500 }
     );
   }
 }
 
 //================================================================================
-// POST Function: สร้างหรือเพิ่มผู้ใช้ใหม่ (/api/users)
+// 2. POST: เพิ่มข้อมูลนักศึกษาใหม่
+// - ผู้ใช้ส่งมาแค่: fullName (ชื่อ-สกุล) และ phone (เบอร์โทร)
+// - ระบบรัน:
+//    1) "no" (เลขที่) +1 ให้อัตโนมัติ (เช่น 1, 2, 3...)
+//    2) "studentId" (รหัสนักศึกษา) +1 ให้อัตโนมัติ (เช่น 69319010024, 69319010025...)
+// Endpoint: POST /api/users
+// Body: { "fullName": "ชื่อ สกุล", "phone": "0812345678" }
 //================================================================================
 export async function POST(request) {
   try {
     const body = await request.json().catch(() => ({}));
 
-    // ตรวจสอบว่ามีข้อมูลส่งมาหรือไม่
-    if (!body || (!body.name && !body.email)) {
+    const fullName = String(body.fullName || body.name || "").trim();
+    const phone = String(body.phone || body.tel || "").trim();
+
+    if (!fullName) {
       return NextResponse.json(
-        {
-          success: false,
-          message: "กรุณาส่งข้อมูล name หรือ email อย่างน้อยหนึ่งอย่าง",
-        },
+        { success: false, message: "กรุณาระบุชื่อ-นามสกุล (fullName)" },
         { status: 400 }
       );
     }
 
-    // กำหนด ID: ถ้าผู้ใช้ระบุ id มาเองให้ใช้ค่านั้น ถ้าไม่ระบุให้รันเลขต่อให้อัตโนมัติ
-    let assignedId;
-    if (body.id) {
-      assignedId = String(body.id);
-      // ตรวจสอบว่า ID ซ้ำหรือไม่
-      const isDuplicate = usersList.some((u) => u.id === assignedId);
-      if (isDuplicate) {
-        return NextResponse.json(
-          {
-            success: false,
-            message: `ID ${assignedId} นี้มีอยู่ในระบบแล้ว กรุณาใช้ ID อื่น`,
-          },
-          { status: 400 }
-        );
-      }
-    } else {
-      // Auto-increment ID: รันเลข 1, 2, 3 ถัดไป
-      const maxId = usersList.reduce((max, u) => {
-        const num = Number(u.id);
-        return !isNaN(num) && num > max ? num : max;
-      }, 0);
-      assignedId = String(maxId + 1);
+    if (!phone) {
+      return NextResponse.json(
+        { success: false, message: "กรุณาระบุเบอร์โทรศัพท์ (phone)" },
+        { status: 400 }
+      );
     }
 
-    // สร้างข้อมูลผู้ใช้ใหม่
-    const newUser = {
-      id: assignedId,
-      name: body.name || "ไม่ระบุชื่อ",
-      email: body.email || "ไม่ระบุอีเมล",
+    const students = getStudents();
+
+    // 1. คำนวณเลขที่ (no) ใหม่ (+1 จากเลขที่สูงสุด)
+    const maxNo = students.reduce((max, u) => Math.max(max, Number(u.no) || 0), 0);
+    const nextNo = maxNo + 1;
+
+    // 2. คำนวณรหัสนักศึกษาใหม่ (+1 จากรหัสสูงสุด)
+    let nextStudentId;
+    if (students.length === 0) {
+      nextStudentId = STARTING_STUDENT_ID;
+    } else {
+      const maxId = students.reduce((max, u) => {
+        try {
+          const current = BigInt(u.studentId);
+          return current > max ? current : max;
+        } catch {
+          return max;
+        }
+      }, 0n);
+
+      nextStudentId = maxId > 0n ? (maxId + 1n).toString() : STARTING_STUDENT_ID;
+    }
+
+    // สร้างข้อมูลนักศึกษาใหม่
+    const newStudent = {
+      no: nextNo,
+      studentId: nextStudentId,
+      fullName: fullName,
+      phone: phone,
     };
 
-    // บันทึกผู้ใช้ใหม่ลงในฐานข้อมูลจำลอง
-    usersList.push(newUser);
+    // บันทึกลงไฟล์ students.json จริง
+    students.push(newStudent);
+    saveStudents(students);
 
-    console.log("เพิ่มผู้ใช้สำเร็จ:", newUser);
+    console.log(`เพิ่มนักศึกษาใหม่สำเร็จ เลขที่: ${nextNo}, รหัส: ${nextStudentId}`);
 
-    // ตอบกลับพร้อมข้อมูลและ ID ที่สร้างขึ้นมา
     return NextResponse.json(
       {
         success: true,
-        message: `เพิ่มข้อมูลผู้ใช้ ID ${assignedId} สำเร็จ`,
-        data: newUser, // ส่งข้อมูลทั้งหมดกลับไป ให้ Client รู้ ID ของตัวเอง
+        message: `เพิ่มข้อมูลสำเร็จ (เลขที่ ${nextNo}, รหัส ${nextStudentId})`,
+        data: newStudent,
       },
       { status: 201 }
     );
   } catch (error) {
     return NextResponse.json(
-      {
-        success: false,
-        message: "เกิดข้อผิดพลาดภายในเซิร์ฟเวอร์",
-        error: error instanceof Error ? error.message : "Internal Server Error",
-      },
+      { success: false, message: "เกิดข้อผิดพลาดภายในเซิร์ฟเวอร์", error: error.message },
       { status: 500 }
     );
   }

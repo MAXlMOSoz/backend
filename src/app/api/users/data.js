@@ -1,6 +1,35 @@
-// ไฟล์จำลองฐานข้อมูล (In-Memory Database)
-// เก็บรายการข้อมูลผู้ใช้ไว้ตรงกลาง เพื่อให้ทุก Route เรียกใช้และแก้ไขร่วมกันได้
-export const usersList = [
-  { id: "1", name: "สมชาย ใจดี", email: "somchai@gmail.com" },
-  { id: "2", name: "สมหญิง รักเรียน", email: "somying@gmail.com" },
-];
+import fs from "fs";
+import path from "path";
+
+// ชี้ตำแหน่งไปยังไฟล์ students.json ที่เก็บข้อมูลจริงในเครื่อง
+const filePath = path.join(process.cwd(), "src/app/api/users/students.json");
+
+/**
+ * ฟังก์ชันอ่านข้อมูลนักศึกษาทั้งหมดจากไฟล์ students.json
+ */
+export function getStudents() {
+  try {
+    if (!fs.existsSync(filePath)) {
+      fs.writeFileSync(filePath, JSON.stringify([], null, 2), "utf-8");
+      return [];
+    }
+    const fileContent = fs.readFileSync(filePath, "utf-8");
+    return JSON.parse(fileContent || "[]");
+  } catch (error) {
+    console.error("เกิดข้อผิดพลาดในการอ่านไฟล์:", error);
+    return [];
+  }
+}
+
+/**
+ * ฟังก์ชันบันทึกข้อมูลนักศึกษาทั้งหมดลงไฟล์ students.json บนฮาร์ดดิสก์จริง
+ */
+export function saveStudents(students) {
+  try {
+    fs.writeFileSync(filePath, JSON.stringify(students, null, 2), "utf-8");
+    return true;
+  } catch (error) {
+    console.error("เกิดข้อผิดพลาดในการเขียนไฟล์:", error);
+    return false;
+  }
+}
